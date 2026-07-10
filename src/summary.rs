@@ -17,6 +17,7 @@ pub struct RunSummary {
     pub ot_ids: usize,
     pub rd_ids: usize,
     pub invalid_lines: usize,
+    pub duplicate_ids: usize,
     pub artwork_failures: usize,
     pub render_failures: usize,
     pub rendered: usize,
@@ -25,7 +26,10 @@ pub struct RunSummary {
 
 impl RunSummary {
     pub fn skipped(&self) -> usize {
-        self.invalid_lines + self.artwork_failures + self.render_failures
+        self.invalid_lines
+            + self.duplicate_ids
+            + self.artwork_failures
+            + self.render_failures
     }
 }
 
@@ -46,6 +50,7 @@ impl fmt::Display for RunSummary {
             self.valid_ids, self.ot_ids, self.rd_ids
         )?;
         writeln!(formatter, "  Invalid lines: {}", self.invalid_lines)?;
+        writeln!(formatter, "  Duplicate IDs: {}", self.duplicate_ids)?;
         writeln!(
             formatter,
             "  Center image failures: {}",
@@ -74,11 +79,12 @@ mod tests {
 
     fn summary() -> RunSummary {
         RunSummary {
-            selection: Selection::File { lines: 7 },
+            selection: Selection::File { lines: 8 },
             valid_ids: 5,
             ot_ids: 3,
             rd_ids: 2,
             invalid_lines: 2,
+            duplicate_ids: 1,
             artwork_failures: 1,
             render_failures: 1,
             rendered: 3,
@@ -88,7 +94,7 @@ mod tests {
 
     #[test]
     fn totals_all_skip_stages() {
-        assert_eq!(summary().skipped(), 4);
+        assert_eq!(summary().skipped(), 5);
     }
 
     #[test]
@@ -96,13 +102,14 @@ mod tests {
         assert_eq!(
             summary().to_string(),
             "Summary\n\
-             \x20\x20Selection: file (7 input lines)\n\
+             \x20\x20Selection: file (8 input lines)\n\
              \x20\x20Valid IDs: 5 (OT: 3, RD: 2)\n\
              \x20\x20Invalid lines: 2\n\
+             \x20\x20Duplicate IDs: 1\n\
              \x20\x20Center image failures: 1\n\
              \x20\x20Render failures: 1\n\
              \x20\x20Rendered: 3\n\
-             \x20\x20Skipped: 4\n\
+             \x20\x20Skipped: 5\n\
              \x20\x20Output directory: rendered"
         );
     }

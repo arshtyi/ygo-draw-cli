@@ -81,6 +81,8 @@ fn main() -> Result<()> {
     };
     ids::print_issues(&batch.issues)?;
     let (ot_count, rd_count) = batch.kind_counts();
+    let invalid_count = batch.invalid_count();
+    let duplicate_count = batch.duplicate_count();
     let artworks = artworks::prepare(&batch.cards, &cli.resource_dir)?;
     artworks::print_issues(&artworks.issues)?;
     let rendered =
@@ -91,7 +93,8 @@ fn main() -> Result<()> {
         valid_ids: batch.cards.len(),
         ot_ids: ot_count,
         rd_ids: rd_count,
-        invalid_lines: batch.issues.len(),
+        invalid_lines: invalid_count,
+        duplicate_ids: duplicate_count,
         artwork_failures: artworks.issues.len(),
         render_failures: rendered.issues.len(),
         rendered: rendered.rendered.len(),
