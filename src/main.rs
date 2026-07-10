@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 
 mod artworks;
+mod download;
 mod ids;
 mod random;
 mod rendering;

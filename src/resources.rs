@@ -1,24 +1,63 @@
 use std::fs::{self, File};
-use std::io::{self, BufWriter};
+use std::io::{BufWriter, Write};
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use flate2::read::GzDecoder;
 use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
 use tar::Archive;
 use tempfile::TempDir;
 use xz2::read::XzDecoder;
 
-const OT_CARDS_URL: &str =
-    "https://github.com/arshtyi/ygo-cards/releases/download/latest/ot.json";
-const RD_CARDS_URL: &str =
-    "https://github.com/arshtyi/ygo-cards/releases/download/latest/rd.json";
-const ASSETS_URL: &str =
-    "https://github.com/arshtyi/ygo-assets/releases/download/latest/assets.tar.xz";
-const TYPST_YGO_URL: &str =
-    "https://github.com/arshtyi/typst-ygo/archive/refs/heads/main.tar.gz";
+use crate::download::{self, DownloadRecord};
+
+const CARD_RELEASE_URL: &str =
+    "https://api.github.com/repos/arshtyi/ygo-cards/releases/tags/latest";
+const ASSET_RELEASE_URL: &str =
+    "https://api.github.com/repos/arshtyi/ygo-assets/releases/tags/latest";
+const TYPST_YGO_COMMIT_URL: &str =
+    "https://api.github.com/repos/arshtyi/typst-ygo/commits/main";
 
 const PROJECT_DIR: &str = "typst-ygo";
+const MANIFEST_FILE: &str = ".ygo-draw-resources.json";
+
+#[derive(Debug, Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    published_at: String,
+    assets: Vec<GitHubAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubAsset {
+    name: String,
+    size: u64,
+    digest: Option<String>,
+    browser_download_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubCommit {
+    sha: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ResourceManifest {
+    schema_version: u32,
+    generated_by: String,
+    typst_ygo_commit: String,
+    releases: Vec<ReleaseVersion>,
+    downloads: Vec<DownloadRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReleaseVersion {
+    repository: String,
+    tag: String,
+    published_at: String,
+}
 
 pub fn refresh(resource_dir: &Path) -> Result<()> {
     fs::create_dir_all(resource_dir).with_context(|| {
@@ -36,17 +75,42 @@ pub fn refresh(resource_dir: &Path) -> Result<()> {
 
     let client = Client::builder()
         .user_agent(concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
         .build()
         .context("failed to create HTTP client")?;
 
+    println!("Resolving resource versions...");
+    let card_release: GitHubRelease = download::get_json(&client, CARD_RELEASE_URL)?;
+    let asset_release: GitHubRelease = download::get_json(&client, ASSET_RELEASE_URL)?;
+    let typst_ygo_commit: GitHubCommit =
+        download::get_json(&client, TYPST_YGO_COMMIT_URL)?;
+    let mut records = Vec::new();
+
     println!("Refreshing typst-ygo...");
     let project_archive = downloads.join("typst-ygo.tar.gz");
-    download(&client, TYPST_YGO_URL, &project_archive)?;
+    let project_url = format!(
+        "https://github.com/arshtyi/typst-ygo/archive/{}.tar.gz",
+        typst_ygo_commit.sha
+    );
+    records.push(download::to_file(
+        &client,
+        "typst-ygo.tar.gz",
+        &project_url,
+        &project_archive,
+        None,
+        None,
+    )?);
     extract_project(&project_archive, &staging)?;
 
     println!("Refreshing shared assets...");
+    let asset = find_release_asset(&asset_release, "assets.tar.xz")?;
     let assets_archive = downloads.join("assets.tar.xz");
-    download(&client, ASSETS_URL, &assets_archive)?;
+    records.push(download_release_asset(
+        &client,
+        asset,
+        &assets_archive,
+    )?);
     let unpacked_assets = workspace.path().join("unpacked-assets");
     fs::create_dir_all(&unpacked_assets).context("failed to create asset staging directory")?;
     extract_xz_archive(&assets_archive, &unpacked_assets)?;
@@ -56,12 +120,37 @@ pub fn refresh(resource_dir: &Path) -> Result<()> {
     println!("Refreshing card data...");
     let ot_cards = staging.join("assets/ot/card/ot.json");
     let rd_cards = staging.join("assets/rd/card/rd.json");
-    download(&client, OT_CARDS_URL, &ot_cards)?;
-    download(&client, RD_CARDS_URL, &rd_cards)?;
+    records.push(download_release_asset(
+        &client,
+        find_release_asset(&card_release, "ot.json")?,
+        &ot_cards,
+    )?);
+    records.push(download_release_asset(
+        &client,
+        find_release_asset(&card_release, "rd.json")?,
+        &rd_cards,
+    )?);
 
     require_file(&staging.join("lib/mod.typ"))?;
     require_file(&ot_cards)?;
     require_file(&rd_cards)?;
+    write_manifest(
+        &staging.join(MANIFEST_FILE),
+        &ResourceManifest {
+            schema_version: 1,
+            generated_by: format!(
+                "{}/{}",
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION")
+            ),
+            typst_ygo_commit: typst_ygo_commit.sha,
+            releases: vec![
+                release_version("arshtyi/ygo-cards", &card_release),
+                release_version("arshtyi/ygo-assets", &asset_release),
+            ],
+            downloads: records,
+        },
+    )?;
     install(staging, &resource_dir.join(PROJECT_DIR), workspace.path())?;
 
     println!(
@@ -71,26 +160,49 @@ pub fn refresh(resource_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn download(client: &Client, url: &str, destination: &Path) -> Result<()> {
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
-    }
+fn find_release_asset<'a>(release: &'a GitHubRelease, name: &str) -> Result<&'a GitHubAsset> {
+    release
+        .assets
+        .iter()
+        .find(|asset| asset.name == name)
+        .with_context(|| format!("release {} does not contain {name}", release.tag_name))
+}
 
-    let mut response = client
-        .get(url)
-        .send()
-        .with_context(|| format!("failed to download {url}"))?
-        .error_for_status()
-        .with_context(|| format!("download returned an error for {url}"))?;
-    let file = File::create(destination)
-        .with_context(|| format!("failed to create {}", destination.display()))?;
-    let mut writer = BufWriter::new(file);
-    let size = io::copy(&mut response, &mut writer)
-        .with_context(|| format!("failed to save download from {url}"))?;
-    if size == 0 {
-        bail!("download from {url} was empty");
+fn download_release_asset(
+    client: &Client,
+    asset: &GitHubAsset,
+    destination: &Path,
+) -> Result<DownloadRecord> {
+    let digest = asset
+        .digest
+        .as_deref()
+        .with_context(|| format!("GitHub did not provide a digest for {}", asset.name))?;
+    download::to_file(
+        client,
+        &asset.name,
+        &asset.browser_download_url,
+        destination,
+        Some(asset.size),
+        Some(digest),
+    )
+}
+
+fn release_version(repository: &str, release: &GitHubRelease) -> ReleaseVersion {
+    ReleaseVersion {
+        repository: repository.to_owned(),
+        tag: release.tag_name.clone(),
+        published_at: release.published_at.clone(),
     }
+}
+
+fn write_manifest(path: &Path, manifest: &ResourceManifest) -> Result<()> {
+    let file = File::create(path)
+        .with_context(|| format!("failed to create resource manifest {}", path.display()))?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(&mut writer, manifest)
+        .context("failed to serialize resource manifest")?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
     Ok(())
 }
 
@@ -220,6 +332,19 @@ fn install(staging: PathBuf, destination: &Path, workspace: &Path) -> Result<()>
 mod tests {
     use super::*;
 
+    fn release() -> GitHubRelease {
+        GitHubRelease {
+            tag_name: "latest".to_owned(),
+            published_at: "2026-01-01T00:00:00Z".to_owned(),
+            assets: vec![GitHubAsset {
+                name: "ot.json".to_owned(),
+                size: 3,
+                digest: Some(format!("sha256:{}", "a".repeat(64))),
+                browser_download_url: "https://example.com/ot.json".to_owned(),
+            }],
+        }
+    }
+
     #[test]
     fn strips_archive_root_safely() {
         assert_eq!(
@@ -267,5 +392,34 @@ mod tests {
         fs::create_dir_all(temp.path().join("ot")).unwrap();
 
         assert!(find_asset_root(temp.path()).is_err());
+    }
+
+    #[test]
+    fn locates_named_release_asset() {
+        let release = release();
+
+        assert_eq!(find_release_asset(&release, "ot.json").unwrap().size, 3);
+        assert!(find_release_asset(&release, "rd.json").is_err());
+    }
+
+    #[test]
+    fn writes_versioned_resource_manifest() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join(MANIFEST_FILE);
+        let manifest = ResourceManifest {
+            schema_version: 1,
+            generated_by: "ygo-draw/test".to_owned(),
+            typst_ygo_commit: "abc123".to_owned(),
+            releases: vec![release_version("arshtyi/ygo-cards", &release())],
+            downloads: Vec::new(),
+        };
+
+        write_manifest(&path, &manifest).unwrap();
+
+        let value: serde_json::Value =
+            serde_json::from_reader(File::open(path).unwrap()).unwrap();
+        assert_eq!(value["schema_version"], 1);
+        assert_eq!(value["typst_ygo_commit"], "abc123");
+        assert_eq!(value["releases"][0]["tag"], "latest");
     }
 }

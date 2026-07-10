@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::path::Path;
 use std::time::Duration;
@@ -7,8 +7,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use tempfile::NamedTempFile;
 
+use crate::download;
 use crate::ids::{CardId, CardKind};
 
 const ARTWORK_URL: &str = "https://images.ygoprodeck.com/images/cards_cropped";
@@ -164,32 +164,15 @@ fn ensure_artwork(client: &Client, image_id: u64, destination: &Path) -> Result<
     if destination.metadata().is_ok_and(|metadata| metadata.len() > 0) {
         return Ok(());
     }
-    let parent = destination
-        .parent()
-        .context("artwork destination has no parent directory")?;
-    fs::create_dir_all(parent)
-        .with_context(|| format!("failed to create {}", parent.display()))?;
-
     let url = format!("{ARTWORK_URL}/{image_id}.jpg");
-    let mut response = client
-        .get(&url)
-        .send()
-        .with_context(|| format!("failed to download {url}"))?
-        .error_for_status()
-        .with_context(|| format!("download returned an error for {url}"))?;
-    let mut temporary = NamedTempFile::new_in(parent)
-        .with_context(|| format!("failed to create temporary image in {}", parent.display()))?;
-    let size = io::copy(&mut response, &mut temporary)
-        .with_context(|| format!("failed to save image {image_id}"))?;
-    if size == 0 {
-        bail!("downloaded image was empty");
-    }
-    temporary
-        .flush()
-        .with_context(|| format!("failed to flush image {image_id}"))?;
-    temporary.persist(destination).map_err(|error| error.error).with_context(|| {
-        format!("failed to install downloaded image at {}", destination.display())
-    })?;
+    download::to_file(
+        client,
+        &format!("{image_id}.jpg"),
+        &url,
+        destination,
+        None,
+        None,
+    )?;
     Ok(())
 }
 
