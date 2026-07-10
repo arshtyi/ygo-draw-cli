@@ -5,8 +5,14 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum Selection {
+    File { lines: usize },
+    Random { requested: usize },
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub struct RunSummary {
-    pub input_lines: usize,
+    pub selection: Selection,
     pub valid_ids: usize,
     pub ot_ids: usize,
     pub rd_ids: usize,
@@ -26,7 +32,14 @@ impl RunSummary {
 impl fmt::Display for RunSummary {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(formatter, "Summary")?;
-        writeln!(formatter, "  Input lines: {}", self.input_lines)?;
+        match &self.selection {
+            Selection::File { lines } => {
+                writeln!(formatter, "  Selection: file ({lines} input lines)")?;
+            }
+            Selection::Random { requested } => {
+                writeln!(formatter, "  Selection: random ({requested} requested)")?;
+            }
+        }
         writeln!(
             formatter,
             "  Valid IDs: {} (OT: {}, RD: {})",
@@ -61,7 +74,7 @@ mod tests {
 
     fn summary() -> RunSummary {
         RunSummary {
-            input_lines: 7,
+            selection: Selection::File { lines: 7 },
             valid_ids: 5,
             ot_ids: 3,
             rd_ids: 2,
@@ -83,7 +96,7 @@ mod tests {
         assert_eq!(
             summary().to_string(),
             "Summary\n\
-             \x20\x20Input lines: 7\n\
+             \x20\x20Selection: file (7 input lines)\n\
              \x20\x20Valid IDs: 5 (OT: 3, RD: 2)\n\
              \x20\x20Invalid lines: 2\n\
              \x20\x20Center image failures: 1\n\
@@ -92,5 +105,13 @@ mod tests {
              \x20\x20Skipped: 4\n\
              \x20\x20Output directory: rendered"
         );
+    }
+
+    #[test]
+    fn formats_random_selection() {
+        let mut summary = summary();
+        summary.selection = Selection::Random { requested: 5 };
+
+        assert!(summary.to_string().contains("Selection: random (5 requested)"));
     }
 }

@@ -46,6 +46,26 @@ impl Catalogs {
         })
     }
 
+    fn available_cards(&self) -> Vec<CardId> {
+        self.ot
+            .iter()
+            .filter(|(_, image_id)| **image_id != 0)
+            .map(|(&value, _)| CardId {
+                value,
+                kind: CardKind::Ot,
+            })
+            .chain(
+                self.rd
+                    .iter()
+                    .filter(|(_, image_id)| **image_id != 0)
+                    .map(|(&value, _)| CardId {
+                        value,
+                        kind: CardKind::Rd,
+                    }),
+            )
+            .collect()
+    }
+
     fn image_id(&self, card: CardId) -> Result<u64, &'static str> {
         let catalog = match card.kind {
             CardKind::Ot => &self.ot,
@@ -57,6 +77,18 @@ impl Catalogs {
             None => Err("card ID was not found in card data"),
         }
     }
+}
+
+pub fn available_cards(resource_dir: &Path) -> Result<Vec<CardId>> {
+    let project_dir = resource_dir.join("typst-ygo");
+    Catalogs::load(&project_dir)
+        .map(|catalogs| catalogs.available_cards())
+        .with_context(|| {
+            format!(
+                "failed to load card data from {}; run with --refresh first",
+                project_dir.display()
+            )
+        })
 }
 
 pub fn prepare(cards: &[CardId], resource_dir: &Path) -> Result<ArtworkBatch> {
@@ -227,6 +259,19 @@ mod tests {
             catalogs.image_id(card(2, CardKind::Ot)),
             Err("card ID was not found in card data")
         );
+    }
+
+    #[test]
+    fn available_cards_exclude_zero_image_ids() {
+        let catalogs = Catalogs {
+            ot: HashMap::from([(1, 11), (2, 0)]),
+            rd: HashMap::from([(100_000_001, 22)]),
+        };
+        let cards = catalogs.available_cards();
+
+        assert_eq!(cards.len(), 2);
+        assert!(cards.contains(&card(1, CardKind::Ot)));
+        assert!(cards.contains(&card(100_000_001, CardKind::Rd)));
     }
 
     #[test]

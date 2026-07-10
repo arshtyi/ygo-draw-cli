@@ -3895,6 +3895,7 @@ dependencies = [
  "anyhow",
  "clap",
  "flate2",
+ "rand 0.9.4",
  "reqwest",
  "serde",
  "serde_json",
