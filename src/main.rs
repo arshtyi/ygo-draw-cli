@@ -18,6 +18,10 @@ struct Cli {
     #[arg(long)]
     refresh: bool,
 
+    /// Refresh resources and exit without rendering cards.
+    #[arg(long, conflicts_with_all = ["refresh", "random"])]
+    refresh_only: bool,
+
     /// Read card IDs from this file, one ID per line.
     #[arg(short, long, default_value = "cards.txt")]
     input: PathBuf,
@@ -53,8 +57,11 @@ fn parse_positive_count(value: &str) -> Result<usize, String> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    if cli.refresh {
+    if cli.refresh || cli.refresh_only {
         resources::refresh(&cli.resource_dir)?;
+    }
+    if cli.refresh_only {
+        return Ok(());
     }
 
     let (batch, selection) = match cli.random {
@@ -102,6 +109,7 @@ mod tests {
         let cli = Cli::try_parse_from(["ygo-draw"]).expect("default CLI should parse");
 
         assert!(!cli.refresh);
+        assert!(!cli.refresh_only);
         assert_eq!(cli.input, PathBuf::from("cards.txt"));
         assert_eq!(cli.random, None);
         assert_eq!(cli.output, PathBuf::from("output"));
@@ -125,6 +133,7 @@ mod tests {
         .expect("explicit CLI options should parse");
 
         assert!(cli.refresh);
+        assert!(!cli.refresh_only);
         assert_eq!(cli.input, PathBuf::from("ids.txt"));
         assert_eq!(cli.random, Some(12));
         assert_eq!(cli.output, PathBuf::from("rendered"));
@@ -134,5 +143,31 @@ mod tests {
     #[test]
     fn rejects_zero_random_count() {
         assert!(Cli::try_parse_from(["ygo-draw", "--random", "0"]).is_err());
+    }
+
+    #[test]
+    fn parses_refresh_only_with_custom_resource_directory() {
+        let cli = Cli::try_parse_from([
+            "ygo-draw",
+            "--refresh-only",
+            "--resource-dir",
+            "cache",
+        ])
+        .expect("refresh-only mode should parse");
+
+        assert!(cli.refresh_only);
+        assert!(!cli.refresh);
+        assert_eq!(cli.resource_dir, PathBuf::from("cache"));
+    }
+
+    #[test]
+    fn refresh_only_rejects_rendering_modes() {
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--refresh-only", "--refresh"]).is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--refresh-only", "--random", "1"])
+                .is_err()
+        );
     }
 }
