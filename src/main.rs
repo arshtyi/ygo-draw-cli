@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 
+mod ids;
 mod resources;
 
 /// Render Yu-Gi-Oh! cards with typst-ygo.
@@ -35,6 +36,16 @@ fn main() -> Result<()> {
 
     if cli.refresh {
         resources::refresh(&cli.resource_dir)?;
+    }
+
+    if cli.random.is_none() {
+        let batch = ids::read_file(&cli.input)?;
+        ids::print_issues(&batch.issues)?;
+        let (ot_count, rd_count) = batch.kind_counts();
+        println!(
+            "Loaded {} card ID(s): {ot_count} OT, {rd_count} RD.",
+            batch.cards.len()
+        );
     }
 
     Ok(())
