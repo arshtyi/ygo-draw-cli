@@ -11,6 +11,15 @@ pub enum CardKind {
     Rd,
 }
 
+impl CardKind {
+    pub fn directory_name(self) -> &'static str {
+        match self {
+            Self::Ot => "ot",
+            Self::Rd => "rd",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CardId {
     pub value: u64,

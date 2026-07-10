@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 
+mod artworks;
 mod ids;
 mod resources;
 
@@ -42,10 +43,13 @@ fn main() -> Result<()> {
         let batch = ids::read_file(&cli.input)?;
         ids::print_issues(&batch.issues)?;
         let (ot_count, rd_count) = batch.kind_counts();
+        let artworks = artworks::prepare(&batch.cards, &cli.resource_dir)?;
+        artworks::print_issues(&artworks.issues)?;
         println!(
             "Loaded {} card ID(s): {ot_count} OT, {rd_count} RD.",
             batch.cards.len()
         );
+        println!("Prepared {} center image(s).", artworks.ready.len());
     }
 
     Ok(())
