@@ -1,0 +1,11 @@
+[package]
+name = "ygo-draw"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Render Yu-Gi-Oh! cards from the command line with typst-ygo"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+
