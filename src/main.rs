@@ -5,6 +5,7 @@ use clap::Parser;
 
 mod artworks;
 mod ids;
+mod rendering;
 mod resources;
 
 /// Render Yu-Gi-Oh! cards with typst-ygo.
@@ -45,11 +46,18 @@ fn main() -> Result<()> {
         let (ot_count, rd_count) = batch.kind_counts();
         let artworks = artworks::prepare(&batch.cards, &cli.resource_dir)?;
         artworks::print_issues(&artworks.issues)?;
+        let rendered = rendering::render_all(
+            &artworks.ready,
+            &cli.resource_dir,
+            &cli.output,
+        )?;
+        rendering::print_issues(&rendered.issues)?;
         println!(
             "Loaded {} card ID(s): {ot_count} OT, {rd_count} RD.",
             batch.cards.len()
         );
         println!("Prepared {} center image(s).", artworks.ready.len());
+        println!("Rendered {} card image(s).", rendered.rendered.len());
     }
 
     Ok(())
