@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
+use anyhow::Result;
 use clap::Parser;
+
+mod resources;
 
 /// Render Yu-Gi-Oh! cards with typst-ygo.
 #[derive(Debug, Parser)]
@@ -21,10 +24,20 @@ struct Cli {
     /// Write rendered card images to this directory.
     #[arg(short, long, default_value = "output")]
     output: PathBuf,
+
+    /// Store downloaded resources in this directory.
+    #[arg(long, default_value = "resources")]
+    resource_dir: PathBuf,
 }
 
-fn main() {
-    let _cli = Cli::parse();
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    if cli.refresh {
+        resources::refresh(&cli.resource_dir)?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -39,6 +52,7 @@ mod tests {
         assert_eq!(cli.input, PathBuf::from("cards.txt"));
         assert_eq!(cli.random, None);
         assert_eq!(cli.output, PathBuf::from("output"));
+        assert_eq!(cli.resource_dir, PathBuf::from("resources"));
     }
 
     #[test]
@@ -52,6 +66,8 @@ mod tests {
             "12",
             "--output",
             "rendered",
+            "--resource-dir",
+            "cache",
         ])
         .expect("explicit CLI options should parse");
 
@@ -59,5 +75,6 @@ mod tests {
         assert_eq!(cli.input, PathBuf::from("ids.txt"));
         assert_eq!(cli.random, Some(12));
         assert_eq!(cli.output, PathBuf::from("rendered"));
+        assert_eq!(cli.resource_dir, PathBuf::from("cache"));
     }
 }
