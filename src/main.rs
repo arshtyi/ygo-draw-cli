@@ -7,6 +7,7 @@ mod artworks;
 mod ids;
 mod rendering;
 mod resources;
+mod summary;
 
 /// Render Yu-Gi-Oh! cards with typst-ygo.
 #[derive(Debug, Parser)]
@@ -52,12 +53,17 @@ fn main() -> Result<()> {
             &cli.output,
         )?;
         rendering::print_issues(&rendered.issues)?;
-        println!(
-            "Loaded {} card ID(s): {ot_count} OT, {rd_count} RD.",
-            batch.cards.len()
-        );
-        println!("Prepared {} center image(s).", artworks.ready.len());
-        println!("Rendered {} card image(s).", rendered.rendered.len());
+        summary::print(&summary::RunSummary {
+            input_lines: batch.cards.len() + batch.issues.len(),
+            valid_ids: batch.cards.len(),
+            ot_ids: ot_count,
+            rd_ids: rd_count,
+            invalid_lines: batch.issues.len(),
+            artwork_failures: artworks.issues.len(),
+            render_failures: rendered.issues.len(),
+            rendered: rendered.rendered.len(),
+            output_dir: cli.output.clone(),
+        })?;
     }
 
     Ok(())
