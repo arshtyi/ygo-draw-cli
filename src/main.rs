@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 
 mod artworks;
+mod cleanup;
 mod download;
 mod ids;
 mod progress;
@@ -23,6 +24,10 @@ struct Cli {
     /// Refresh resources and exit without rendering cards.
     #[arg(long, conflicts_with_all = ["refresh", "random"])]
     refresh_only: bool,
+
+    /// Remove all downloaded resources and rendered output, then exit.
+    #[arg(long, conflicts_with_all = ["refresh", "refresh_only", "random"])]
+    clean: bool,
 
     /// Read card IDs from this file, one ID per line.
     #[arg(short, long, default_value = "cards.txt")]
@@ -58,6 +63,11 @@ fn parse_positive_count(value: &str) -> Result<usize, String> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if cli.clean {
+        cleanup::all(&cli.resource_dir, &cli.output)?;
+        return Ok(());
+    }
 
     if cli.refresh || cli.refresh_only {
         resources::refresh(&cli.resource_dir)?;
@@ -115,6 +125,7 @@ mod tests {
 
         assert!(!cli.refresh);
         assert!(!cli.refresh_only);
+        assert!(!cli.clean);
         assert_eq!(cli.input, PathBuf::from("cards.txt"));
         assert_eq!(cli.random, None);
         assert_eq!(cli.output, PathBuf::from("output"));
@@ -139,6 +150,7 @@ mod tests {
 
         assert!(cli.refresh);
         assert!(!cli.refresh_only);
+        assert!(!cli.clean);
         assert_eq!(cli.input, PathBuf::from("ids.txt"));
         assert_eq!(cli.random, Some(12));
         assert_eq!(cli.output, PathBuf::from("rendered"));
@@ -173,6 +185,34 @@ mod tests {
         assert!(
             Cli::try_parse_from(["ygo-draw", "--refresh-only", "--random", "1"])
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn parses_clean_mode_with_custom_directories() {
+        let cli = Cli::try_parse_from([
+            "ygo-draw",
+            "--clean",
+            "--resource-dir",
+            "cache",
+            "--output",
+            "rendered",
+        ])
+        .expect("clean mode should parse");
+
+        assert!(cli.clean);
+        assert_eq!(cli.resource_dir, PathBuf::from("cache"));
+        assert_eq!(cli.output, PathBuf::from("rendered"));
+    }
+
+    #[test]
+    fn clean_rejects_other_execution_modes() {
+        assert!(Cli::try_parse_from(["ygo-draw", "--clean", "--refresh"]).is_err());
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--clean", "--refresh-only"]).is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--clean", "--random", "1"]).is_err()
         );
     }
 }
