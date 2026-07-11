@@ -4,10 +4,13 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
+use crate::ids::CardScope;
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum Selection {
     File { lines: usize },
     Random { requested: usize },
+    All { scope: CardScope },
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -42,6 +45,9 @@ impl fmt::Display for RunSummary {
             }
             Selection::Random { requested } => {
                 writeln!(formatter, "  Selection: random ({requested} requested)")?;
+            }
+            Selection::All { scope } => {
+                writeln!(formatter, "  Selection: all ({})", scope.name())?;
             }
         }
         writeln!(
@@ -120,5 +126,15 @@ mod tests {
         summary.selection = Selection::Random { requested: 5 };
 
         assert!(summary.to_string().contains("Selection: random (5 requested)"));
+    }
+
+    #[test]
+    fn formats_all_selection() {
+        let mut summary = summary();
+        summary.selection = Selection::All {
+            scope: CardScope::Both,
+        };
+
+        assert!(summary.to_string().contains("Selection: all (OT and RD)"));
     }
 }

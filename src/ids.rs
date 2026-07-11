@@ -5,6 +5,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use clap::ValueEnum;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CardKind {
@@ -17,6 +18,32 @@ impl CardKind {
         match self {
             Self::Ot => "ot",
             Self::Rd => "rd",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum CardScope {
+    Ot,
+    Rd,
+    Both,
+}
+
+impl CardScope {
+    pub fn includes(self, kind: CardKind) -> bool {
+        matches!(
+            (self, kind),
+            (Self::Ot, CardKind::Ot)
+                | (Self::Rd, CardKind::Rd)
+                | (Self::Both, _)
+        )
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ot => "OT",
+            Self::Rd => "RD",
+            Self::Both => "OT and RD",
         }
     }
 }
@@ -170,6 +197,16 @@ fn write_issues(mut writer: impl Write, issues: &[IdIssue]) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn card_scope_includes_requested_kinds() {
+        assert!(CardScope::Ot.includes(CardKind::Ot));
+        assert!(!CardScope::Ot.includes(CardKind::Rd));
+        assert!(!CardScope::Rd.includes(CardKind::Ot));
+        assert!(CardScope::Rd.includes(CardKind::Rd));
+        assert!(CardScope::Both.includes(CardKind::Ot));
+        assert!(CardScope::Both.includes(CardKind::Rd));
+    }
 
     #[test]
     fn classifies_eight_digits_as_ot_and_nine_as_rd() {

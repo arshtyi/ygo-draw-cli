@@ -22,11 +22,14 @@ struct Cli {
     refresh: bool,
 
     /// Refresh resources and exit without rendering cards.
-    #[arg(long, conflicts_with_all = ["refresh", "random"])]
+    #[arg(long, conflicts_with_all = ["refresh", "random", "all"])]
     refresh_only: bool,
 
     /// Remove all downloaded resources and rendered output, then exit.
-    #[arg(long, conflicts_with_all = ["refresh", "refresh_only", "random"])]
+    #[arg(
+        long,
+        conflicts_with_all = ["refresh", "refresh_only", "random", "all"]
+    )]
     clean: bool,
 
     /// Read card IDs from this file, one ID per line.
@@ -41,6 +44,10 @@ struct Cli {
         value_parser = parse_positive_count
     )]
     random: Option<usize>,
+
+    /// Render every available card in the selected scope.
+    #[arg(long, value_name = "SCOPE", conflicts_with = "random")]
+    all: Option<ids::CardScope>,
 
     /// Write rendered card images to this directory.
     #[arg(short, long, default_value = "output")]
@@ -76,19 +83,30 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let (batch, selection) = match cli.random {
-        Some(count) => (
+    let (batch, selection) = match (cli.random, cli.all) {
+        (Some(count), None) => (
             ids::IdBatch {
                 cards: random::select(count, &cli.resource_dir)?,
                 issues: Vec::new(),
             },
             summary::Selection::Random { requested: count },
         ),
-        None => {
+        (None, Some(scope)) => (
+            ids::IdBatch {
+                cards: artworks::available_cards(&cli.resource_dir)?
+                    .into_iter()
+                    .filter(|card| scope.includes(card.kind))
+                    .collect(),
+                issues: Vec::new(),
+            },
+            summary::Selection::All { scope },
+        ),
+        (None, None) => {
             let batch = ids::read_file(&cli.input)?;
             let lines = batch.cards.len() + batch.issues.len();
             (batch, summary::Selection::File { lines })
         }
+        (Some(_), Some(_)) => unreachable!("clap rejects conflicting selection modes"),
     };
     ids::print_issues(&batch.issues)?;
     let (ot_count, rd_count) = batch.kind_counts();
@@ -128,6 +146,7 @@ mod tests {
         assert!(!cli.clean);
         assert_eq!(cli.input, PathBuf::from("cards.txt"));
         assert_eq!(cli.random, None);
+        assert_eq!(cli.all, None);
         assert_eq!(cli.output, PathBuf::from("output"));
         assert_eq!(cli.resource_dir, PathBuf::from("resources"));
     }
@@ -153,6 +172,7 @@ mod tests {
         assert!(!cli.clean);
         assert_eq!(cli.input, PathBuf::from("ids.txt"));
         assert_eq!(cli.random, Some(12));
+        assert_eq!(cli.all, None);
         assert_eq!(cli.output, PathBuf::from("rendered"));
         assert_eq!(cli.resource_dir, PathBuf::from("cache"));
     }
@@ -160,6 +180,29 @@ mod tests {
     #[test]
     fn rejects_zero_random_count() {
         assert!(Cli::try_parse_from(["ygo-draw", "--random", "0"]).is_err());
+    }
+
+    #[test]
+    fn parses_all_card_scopes() {
+        for (value, expected) in [
+            ("ot", ids::CardScope::Ot),
+            ("rd", ids::CardScope::Rd),
+            ("both", ids::CardScope::Both),
+        ] {
+            let cli = Cli::try_parse_from(["ygo-draw", "--all", value])
+                .expect("all-card scope should parse");
+
+            assert_eq!(cli.all, Some(expected));
+        }
+    }
+
+    #[test]
+    fn all_rejects_random_mode_and_unknown_scopes() {
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--all", "ot", "--random", "1"])
+                .is_err()
+        );
+        assert!(Cli::try_parse_from(["ygo-draw", "--all", "invalid"]).is_err());
     }
 
     #[test]
@@ -184,6 +227,10 @@ mod tests {
         );
         assert!(
             Cli::try_parse_from(["ygo-draw", "--refresh-only", "--random", "1"])
+                .is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--refresh-only", "--all", "both"])
                 .is_err()
         );
     }
@@ -213,6 +260,10 @@ mod tests {
         );
         assert!(
             Cli::try_parse_from(["ygo-draw", "--clean", "--random", "1"]).is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--clean", "--all", "both"])
+                .is_err()
         );
     }
 }
