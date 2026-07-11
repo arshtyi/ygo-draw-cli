@@ -21,8 +21,6 @@ pub struct DownloadRecord {
     pub resolved_url: String,
     pub bytes: u64,
     pub sha256: String,
-    pub expected_sha256: Option<String>,
-    pub checksum_verified: bool,
 }
 
 pub fn to_file(
@@ -30,18 +28,8 @@ pub fn to_file(
     name: &str,
     url: &str,
     destination: &Path,
-    expected_size: Option<u64>,
-    expected_digest: Option<&str>,
 ) -> Result<DownloadRecord> {
-    to_file_inner(
-        client,
-        name,
-        url,
-        destination,
-        expected_size,
-        expected_digest,
-        true,
-    )
+    to_file_inner(client, name, url, destination, true)
 }
 
 pub fn to_file_quiet(
@@ -49,18 +37,8 @@ pub fn to_file_quiet(
     name: &str,
     url: &str,
     destination: &Path,
-    expected_size: Option<u64>,
-    expected_digest: Option<&str>,
 ) -> Result<DownloadRecord> {
-    to_file_inner(
-        client,
-        name,
-        url,
-        destination,
-        expected_size,
-        expected_digest,
-        false,
-    )
+    to_file_inner(client, name, url, destination, false)
 }
 
 fn to_file_inner(
@@ -68,8 +46,6 @@ fn to_file_inner(
     name: &str,
     url: &str,
     destination: &Path,
-    expected_size: Option<u64>,
-    expected_digest: Option<&str>,
     show_progress: bool,
 ) -> Result<DownloadRecord> {
     if let Some(parent) = destination.parent() {
@@ -77,15 +53,7 @@ fn to_file_inner(
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     retry(url, &RETRY_DELAYS, || {
-        download_once(
-            client,
-            name,
-            url,
-            destination,
-            expected_size,
-            expected_digest,
-            show_progress,
-        )
+        download_once(client, name, url, destination, show_progress)
     })
 }
 
@@ -94,8 +62,6 @@ fn download_once(
     name: &str,
     url: &str,
     destination: &Path,
-    expected_size: Option<u64>,
-    expected_digest: Option<&str>,
     show_progress: bool,
 ) -> Result<DownloadRecord> {
     let mut response = client
@@ -113,8 +79,7 @@ fn download_once(
         .context("download destination has no parent directory")?;
     let mut temporary = NamedTempFile::new_in(parent)
         .with_context(|| format!("failed to create temporary file in {}", parent.display()))?;
-    let progress_bar = show_progress
-        .then(|| progress::bytes(name, expected_size.or(response.content_length())));
+    let progress_bar = show_progress.then(|| progress::bytes(name, response.content_length()));
     let result = copy_and_hash(&mut response, &mut temporary, progress_bar.as_ref());
     if let Some(bar) = progress_bar {
         bar.finish_and_clear();
@@ -123,18 +88,6 @@ fn download_once(
         .with_context(|| format!("failed to save download from {url}"))?;
     if bytes == 0 {
         bail!("download from {url} was empty");
-    }
-    if let Some(expected) = expected_size
-        && bytes != expected
-    {
-        bail!("size mismatch for {url}: expected {expected} bytes, received {bytes}");
-    }
-
-    let expected_sha256 = expected_digest.map(normalize_sha256).transpose()?;
-    if let Some(expected) = &expected_sha256
-        && &sha256 != expected
-    {
-        bail!("SHA-256 mismatch for {url}: expected {expected}, received {sha256}");
     }
     temporary.flush().context("failed to flush downloaded file")?;
     temporary
@@ -148,8 +101,6 @@ fn download_once(
         resolved_url,
         bytes,
         sha256,
-        checksum_verified: expected_sha256.is_some(),
-        expected_sha256,
     })
 }
 
@@ -174,14 +125,6 @@ fn copy_and_hash(
         }
     }
     Ok((bytes, format!("{:x}", hasher.finalize())))
-}
-
-fn normalize_sha256(digest: &str) -> Result<String> {
-    let value = digest.strip_prefix("sha256:").unwrap_or(digest);
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        bail!("unsupported SHA-256 digest {digest:?}");
-    }
-    Ok(value.to_ascii_lowercase())
 }
 
 fn retry<T>(
@@ -226,18 +169,6 @@ mod tests {
             digest,
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
-    }
-
-    #[test]
-    fn normalizes_github_digest_format() {
-        assert_eq!(
-            normalize_sha256(
-                "sha256:BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD"
-            )
-            .unwrap(),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-        assert!(normalize_sha256("md5:invalid").is_err());
     }
 
     #[test]

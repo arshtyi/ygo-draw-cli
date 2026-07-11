@@ -62,8 +62,6 @@ pub fn refresh(resource_dir: &Path) -> Result<()> {
         "typst-ygo.tar.gz",
         TYPST_YGO_URL,
         &project_archive,
-        None,
-        None,
     )?);
     extract_project(&project_archive, &staging)?;
 
@@ -74,8 +72,6 @@ pub fn refresh(resource_dir: &Path) -> Result<()> {
         "assets.tar.xz",
         ASSETS_URL,
         &assets_archive,
-        None,
-        None,
     )?);
     let unpacked_assets = workspace.path().join("unpacked-assets");
     fs::create_dir_all(&unpacked_assets).context("failed to create asset staging directory")?;
@@ -91,16 +87,12 @@ pub fn refresh(resource_dir: &Path) -> Result<()> {
         "ot.json",
         OT_CARDS_URL,
         &ot_cards,
-        None,
-        None,
     )?);
     records.push(download::to_file(
         &client,
         "rd.json",
         RD_CARDS_URL,
         &rd_cards,
-        None,
-        None,
     )?);
 
     require_file(&staging.join("lib/mod.typ"))?;
@@ -218,9 +210,10 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
         let entry = entry?;
         let source_path = entry.path();
         let destination_path = destination.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
             copy_tree(&source_path, &destination_path)?;
-        } else {
+        } else if file_type.is_file() {
             fs::copy(&source_path, &destination_path).with_context(|| {
                 format!(
                     "failed to copy {} to {}",
@@ -228,6 +221,11 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
                     destination_path.display()
                 )
             })?;
+        } else {
+            bail!(
+                "asset archive contains unsupported entry {}",
+                source_path.display()
+            );
         }
     }
     Ok(())
@@ -311,6 +309,23 @@ mod tests {
         fs::create_dir_all(temp.path().join("ot")).unwrap();
 
         assert!(find_asset_root(temp.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_tree_rejects_symbolic_links() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let source = temp.path().join("source");
+        let destination = temp.path().join("destination");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("target"), "data").unwrap();
+        symlink(source.join("target"), source.join("link")).unwrap();
+
+        let error = copy_tree(&source, &destination).unwrap_err();
+
+        assert!(error.to_string().contains("unsupported entry"));
     }
 
     #[test]

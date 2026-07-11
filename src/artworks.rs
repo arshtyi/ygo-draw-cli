@@ -176,8 +176,6 @@ fn ensure_artwork(client: &Client, image_id: u64, destination: &Path) -> Result<
         &format!("{image_id}.jpg"),
         &url,
         destination,
-        None,
-        None,
     )?;
     Ok(())
 }
