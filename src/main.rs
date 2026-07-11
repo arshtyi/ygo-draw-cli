@@ -6,6 +6,7 @@ use clap::Parser;
 mod artworks;
 mod download;
 mod ids;
+mod progress;
 mod random;
 mod rendering;
 mod resources;

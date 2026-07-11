@@ -10,6 +10,7 @@ use serde::Deserialize;
 
 use crate::download;
 use crate::ids::{CardId, CardKind};
+use crate::progress;
 
 const ARTWORK_URL: &str = "https://images.ygoprodeck.com/images/cards_cropped";
 
@@ -106,6 +107,7 @@ pub fn prepare(cards: &[CardId], resource_dir: &Path) -> Result<ArtworkBatch> {
         .build()
         .context("failed to create artwork HTTP client")?;
     let mut batch = ArtworkBatch::default();
+    let progress_bar = progress::items("Preparing center images", cards.len());
 
     for &card in cards {
         let image_id = match catalogs.image_id(card) {
@@ -115,6 +117,7 @@ pub fn prepare(cards: &[CardId], resource_dir: &Path) -> Result<ArtworkBatch> {
                     card,
                     reason: reason.to_owned(),
                 });
+                progress_bar.inc(1);
                 continue;
             }
         };
@@ -129,10 +132,13 @@ pub fn prepare(cards: &[CardId], resource_dir: &Path) -> Result<ArtworkBatch> {
                 card,
                 reason: format!("failed to prepare image {image_id}: {error:#}"),
             });
+            progress_bar.inc(1);
             continue;
         }
         batch.ready.push(card);
+        progress_bar.inc(1);
     }
+    progress_bar.finish_and_clear();
     Ok(batch)
 }
 

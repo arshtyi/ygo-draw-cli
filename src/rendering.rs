@@ -16,6 +16,7 @@ use typst_layout::PagedDocument;
 use typst_render::RenderOptions;
 
 use crate::ids::{CardId, CardKind};
+use crate::progress;
 
 const PPI: f64 = 600.0;
 const POINTS_PER_INCH: f64 = 72.0;
@@ -154,6 +155,7 @@ pub fn render_all(
     .intern();
     let options = render_options();
     let mut batch = RenderBatch::default();
+    let progress_bar = progress::items("Rendering cards", cards.len());
 
     for &card in cards {
         let source = Source::new(main_id, card_source(card));
@@ -169,7 +171,9 @@ pub fn render_all(
                 reason: format!("{error:#}"),
             }),
         }
+        progress_bar.inc(1);
     }
+    progress_bar.finish_and_clear();
     Ok(batch)
 }
 

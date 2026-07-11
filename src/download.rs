@@ -11,6 +11,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
+use crate::progress;
+
 const RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(500), Duration::from_secs(1)];
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
@@ -84,7 +86,10 @@ fn download_once(
         .context("download destination has no parent directory")?;
     let mut temporary = NamedTempFile::new_in(parent)
         .with_context(|| format!("failed to create temporary file in {}", parent.display()))?;
-    let (bytes, sha256) = copy_and_hash(&mut response, &mut temporary)
+    let progress_bar = progress::bytes(name, expected_size.or(response.content_length()));
+    let result = copy_and_hash(&mut response, &mut temporary, Some(&progress_bar));
+    progress_bar.finish_and_clear();
+    let (bytes, sha256) = result
         .with_context(|| format!("failed to save download from {url}"))?;
     if bytes == 0 {
         bail!("download from {url} was empty");
@@ -118,7 +123,11 @@ fn download_once(
     })
 }
 
-fn copy_and_hash(mut reader: impl Read, mut writer: impl Write) -> Result<(u64, String)> {
+fn copy_and_hash(
+    mut reader: impl Read,
+    mut writer: impl Write,
+    progress_bar: Option<&indicatif::ProgressBar>,
+) -> Result<(u64, String)> {
     let mut hasher = Sha256::new();
     let mut bytes = 0_u64;
     let mut buffer = [0_u8; 64 * 1024];
@@ -130,6 +139,9 @@ fn copy_and_hash(mut reader: impl Read, mut writer: impl Write) -> Result<(u64, 
         writer.write_all(&buffer[..count])?;
         hasher.update(&buffer[..count]);
         bytes += count as u64;
+        if let Some(bar) = progress_bar {
+            bar.inc(count as u64);
+        }
     }
     Ok((bytes, format!("{:x}", hasher.finalize())))
 }
@@ -175,7 +187,8 @@ mod tests {
     #[test]
     fn hashes_while_copying() {
         let mut output = Vec::new();
-        let (bytes, digest) = copy_and_hash(Cursor::new(b"abc"), &mut output).unwrap();
+        let (bytes, digest) =
+            copy_and_hash(Cursor::new(b"abc"), &mut output, None).unwrap();
 
         assert_eq!(bytes, 3);
         assert_eq!(output, b"abc");
