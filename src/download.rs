@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use reqwest::blocking::Client;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
@@ -24,19 +23,6 @@ pub struct DownloadRecord {
     pub sha256: String,
     pub expected_sha256: Option<String>,
     pub checksum_verified: bool,
-}
-
-pub fn get_json<T: DeserializeOwned>(client: &Client, url: &str) -> Result<T> {
-    retry(url, &RETRY_DELAYS, || {
-        client
-            .get(url)
-            .send()
-            .with_context(|| format!("failed to request {url}"))?
-            .error_for_status()
-            .with_context(|| format!("request returned an error for {url}"))?
-            .json()
-            .with_context(|| format!("failed to parse JSON from {url}"))
-    })
 }
 
 pub fn to_file(
