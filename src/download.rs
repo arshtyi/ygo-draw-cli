@@ -33,6 +33,45 @@ pub fn to_file(
     expected_size: Option<u64>,
     expected_digest: Option<&str>,
 ) -> Result<DownloadRecord> {
+    to_file_inner(
+        client,
+        name,
+        url,
+        destination,
+        expected_size,
+        expected_digest,
+        true,
+    )
+}
+
+pub fn to_file_quiet(
+    client: &Client,
+    name: &str,
+    url: &str,
+    destination: &Path,
+    expected_size: Option<u64>,
+    expected_digest: Option<&str>,
+) -> Result<DownloadRecord> {
+    to_file_inner(
+        client,
+        name,
+        url,
+        destination,
+        expected_size,
+        expected_digest,
+        false,
+    )
+}
+
+fn to_file_inner(
+    client: &Client,
+    name: &str,
+    url: &str,
+    destination: &Path,
+    expected_size: Option<u64>,
+    expected_digest: Option<&str>,
+    show_progress: bool,
+) -> Result<DownloadRecord> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -45,6 +84,7 @@ pub fn to_file(
             destination,
             expected_size,
             expected_digest,
+            show_progress,
         )
     })
 }
@@ -56,6 +96,7 @@ fn download_once(
     destination: &Path,
     expected_size: Option<u64>,
     expected_digest: Option<&str>,
+    show_progress: bool,
 ) -> Result<DownloadRecord> {
     let mut response = client
         .get(url)
@@ -72,9 +113,12 @@ fn download_once(
         .context("download destination has no parent directory")?;
     let mut temporary = NamedTempFile::new_in(parent)
         .with_context(|| format!("failed to create temporary file in {}", parent.display()))?;
-    let progress_bar = progress::bytes(name, expected_size.or(response.content_length()));
-    let result = copy_and_hash(&mut response, &mut temporary, Some(&progress_bar));
-    progress_bar.finish_and_clear();
+    let progress_bar = show_progress
+        .then(|| progress::bytes(name, expected_size.or(response.content_length())));
+    let result = copy_and_hash(&mut response, &mut temporary, progress_bar.as_ref());
+    if let Some(bar) = progress_bar {
+        bar.finish_and_clear();
+    }
     let (bytes, sha256) = result
         .with_context(|| format!("failed to save download from {url}"))?;
     if bytes == 0 {

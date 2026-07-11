@@ -171,7 +171,7 @@ fn ensure_artwork(client: &Client, image_id: u64, destination: &Path) -> Result<
         return Ok(());
     }
     let url = format!("{ARTWORK_URL}/{image_id}.jpg");
-    download::to_file(
+    download::to_file_quiet(
         client,
         &format!("{image_id}.jpg"),
         &url,
