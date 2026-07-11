@@ -94,5 +94,3 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" \
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" \
   ghcr.io/arshtyi/ygo-draw-cli:latest
 ```
-
-分支推送和版本标签会由 GitHub Actions 发布对应的 GHCR 标签；`latest` 指向默认分支构建。
