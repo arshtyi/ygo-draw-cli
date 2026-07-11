@@ -9,7 +9,10 @@ use crate::ids::CardScope;
 #[derive(Debug, Eq, PartialEq)]
 pub enum Selection {
     File { lines: usize },
-    Random { requested: usize },
+    Random {
+        requested: usize,
+        scope: CardScope,
+    },
     All { scope: CardScope },
 }
 
@@ -43,8 +46,12 @@ impl fmt::Display for RunSummary {
             Selection::File { lines } => {
                 writeln!(formatter, "  Selection: file ({lines} input lines)")?;
             }
-            Selection::Random { requested } => {
-                writeln!(formatter, "  Selection: random ({requested} requested)")?;
+            Selection::Random { requested, scope } => {
+                writeln!(
+                    formatter,
+                    "  Selection: random ({requested} requested, {})",
+                    scope.name()
+                )?;
             }
             Selection::All { scope } => {
                 writeln!(formatter, "  Selection: all ({})", scope.name())?;
@@ -123,9 +130,16 @@ mod tests {
     #[test]
     fn formats_random_selection() {
         let mut summary = summary();
-        summary.selection = Selection::Random { requested: 5 };
+        summary.selection = Selection::Random {
+            requested: 5,
+            scope: CardScope::Rd,
+        };
 
-        assert!(summary.to_string().contains("Selection: random (5 requested)"));
+        assert!(
+            summary
+                .to_string()
+                .contains("Selection: random (5 requested, RD)")
+        );
     }
 
     #[test]

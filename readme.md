@@ -60,6 +60,7 @@ Options:
       --clean                        Remove all downloaded resources and rendered output, then exit
   -i, --input <INPUT>                Read card IDs from this file, one ID per line [default: cards.txt]
   -r, --random <COUNT>               Render a random selection containing this many cards
+      --random-scope <SCOPE>         Limit random selection to the selected card scope [possible values: ot, rd, both]
       --all <SCOPE>                  Render every available card in the selected scope [possible values: ot, rd, both]
   -o, --output <OUTPUT>              Write rendered card images to this directory [default: output]
       --resource-dir <RESOURCE_DIR>  Store downloaded resources in this directory [default: resources]
@@ -70,6 +71,7 @@ Options:
 - 创建 `cards.txt`，每行填写一个十进制卡片 ID。
 - 不超过 8 位的 ID 按 OT 处理，超过 8 位的 ID 按 RD 处理。
 - 生成的图片默认写入 `output/<id>.png`。
+- 使用 `--random-scope ot`、`--random-scope rd` 或 `--random-scope both` 限定随机范围；省略时默认从 OT 和 RD 中随机。
 - 使用 `--all ot`、`--all rd` 或 `--all both` 生成对应范围内全部具备中心图的卡片；该选项不能与 `--random` 同时使用。
 - 首次使用必须先刷新资源；以后仅在需要更新资源时使用 `--refresh` 或 `--refresh-only`。
 

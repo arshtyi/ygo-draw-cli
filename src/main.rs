@@ -45,6 +45,10 @@ struct Cli {
     )]
     random: Option<usize>,
 
+    /// Limit random selection to the selected card scope.
+    #[arg(long, value_name = "SCOPE", requires = "random")]
+    random_scope: Option<ids::CardScope>,
+
     /// Render every available card in the selected scope.
     #[arg(long, value_name = "SCOPE", conflicts_with = "random")]
     all: Option<ids::CardScope>,
@@ -84,13 +88,19 @@ fn main() -> Result<()> {
     }
 
     let (batch, selection) = match (cli.random, cli.all) {
-        (Some(count), None) => (
-            ids::IdBatch {
-                cards: random::select(count, &cli.resource_dir)?,
-                issues: Vec::new(),
-            },
-            summary::Selection::Random { requested: count },
-        ),
+        (Some(count), None) => {
+            let scope = cli.random_scope.unwrap_or(ids::CardScope::Both);
+            (
+                ids::IdBatch {
+                    cards: random::select(count, scope, &cli.resource_dir)?,
+                    issues: Vec::new(),
+                },
+                summary::Selection::Random {
+                    requested: count,
+                    scope,
+                },
+            )
+        }
         (None, Some(scope)) => (
             ids::IdBatch {
                 cards: artworks::available_cards(&cli.resource_dir)?
@@ -146,6 +156,7 @@ mod tests {
         assert!(!cli.clean);
         assert_eq!(cli.input, PathBuf::from("cards.txt"));
         assert_eq!(cli.random, None);
+        assert_eq!(cli.random_scope, None);
         assert_eq!(cli.all, None);
         assert_eq!(cli.output, PathBuf::from("output"));
         assert_eq!(cli.resource_dir, PathBuf::from("resources"));
@@ -172,6 +183,7 @@ mod tests {
         assert!(!cli.clean);
         assert_eq!(cli.input, PathBuf::from("ids.txt"));
         assert_eq!(cli.random, Some(12));
+        assert_eq!(cli.random_scope, None);
         assert_eq!(cli.all, None);
         assert_eq!(cli.output, PathBuf::from("rendered"));
         assert_eq!(cli.resource_dir, PathBuf::from("cache"));
@@ -180,6 +192,43 @@ mod tests {
     #[test]
     fn rejects_zero_random_count() {
         assert!(Cli::try_parse_from(["ygo-draw", "--random", "0"]).is_err());
+    }
+
+    #[test]
+    fn parses_random_card_scopes() {
+        for (value, expected) in [
+            ("ot", ids::CardScope::Ot),
+            ("rd", ids::CardScope::Rd),
+            ("both", ids::CardScope::Both),
+        ] {
+            let cli = Cli::try_parse_from([
+                "ygo-draw",
+                "--random",
+                "3",
+                "--random-scope",
+                value,
+            ])
+            .expect("random-card scope should parse");
+
+            assert_eq!(cli.random_scope, Some(expected));
+        }
+    }
+
+    #[test]
+    fn random_scope_requires_random_mode_and_rejects_unknown_scopes() {
+        assert!(
+            Cli::try_parse_from(["ygo-draw", "--random-scope", "ot"]).is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "ygo-draw",
+                "--random",
+                "1",
+                "--random-scope",
+                "invalid",
+            ])
+            .is_err()
+        );
     }
 
     #[test]

@@ -5,25 +5,31 @@ use rand::Rng;
 use rand::seq::SliceRandom;
 
 use crate::artworks;
-use crate::ids::CardId;
+use crate::ids::{CardId, CardScope};
 
-pub fn select(count: usize, resource_dir: &Path) -> Result<Vec<CardId>> {
+pub fn select(count: usize, scope: CardScope, resource_dir: &Path) -> Result<Vec<CardId>> {
     let cards = artworks::available_cards(resource_dir)?;
-    select_with_rng(cards, count, &mut rand::rng())
+    select_with_rng(cards, count, scope, &mut rand::rng())
 }
 
 fn select_with_rng(
-    mut cards: Vec<CardId>,
+    cards: Vec<CardId>,
     count: usize,
+    scope: CardScope,
     rng: &mut impl Rng,
 ) -> Result<Vec<CardId>> {
     if count == 0 {
         bail!("random card count must be greater than zero");
     }
+    let mut cards: Vec<_> = cards
+        .into_iter()
+        .filter(|card| scope.includes(card.kind))
+        .collect();
     if count > cards.len() {
         bail!(
-            "requested {count} random cards, but only {} cards have center images",
-            cards.len()
+            "requested {count} random cards, but only {} {} cards have center images",
+            cards.len(),
+            scope.name()
         );
     }
 
@@ -61,8 +67,13 @@ mod tests {
 
     #[test]
     fn selects_requested_number_without_duplicates() {
-        let selected =
-            select_with_rng(cards(), 2, &mut StdRng::seed_from_u64(7)).unwrap();
+        let selected = select_with_rng(
+            cards(),
+            2,
+            CardScope::Both,
+            &mut StdRng::seed_from_u64(7),
+        )
+        .unwrap();
         let unique: HashSet<_> = selected.iter().map(|card| card.value).collect();
 
         assert_eq!(selected.len(), 2);
@@ -70,8 +81,38 @@ mod tests {
     }
 
     #[test]
-    fn rejects_zero_and_excessive_counts() {
-        assert!(select_with_rng(cards(), 0, &mut StdRng::seed_from_u64(7)).is_err());
-        assert!(select_with_rng(cards(), 4, &mut StdRng::seed_from_u64(7)).is_err());
+    fn selects_only_cards_in_requested_scope() {
+        let selected = select_with_rng(
+            cards(),
+            1,
+            CardScope::Rd,
+            &mut StdRng::seed_from_u64(7),
+        )
+        .unwrap();
+
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].kind, CardKind::Rd);
+    }
+
+    #[test]
+    fn rejects_zero_and_counts_exceeding_requested_scope() {
+        assert!(
+            select_with_rng(
+                cards(),
+                0,
+                CardScope::Both,
+                &mut StdRng::seed_from_u64(7),
+            )
+            .is_err()
+        );
+        assert!(
+            select_with_rng(
+                cards(),
+                2,
+                CardScope::Rd,
+                &mut StdRng::seed_from_u64(7),
+            )
+            .is_err()
+        );
     }
 }
