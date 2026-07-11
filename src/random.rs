@@ -8,7 +8,7 @@ use crate::artworks;
 use crate::ids::{CardId, CardScope};
 
 pub fn select(count: usize, scope: CardScope, resource_dir: &Path) -> Result<Vec<CardId>> {
-    let cards = artworks::available_cards(resource_dir)?;
+    let cards = artworks::available_cards(resource_dir, scope)?;
     select_with_rng(cards, count, scope, &mut rand::rng())
 }
 
@@ -21,15 +21,11 @@ fn select_with_rng(
     if count == 0 {
         bail!("random card count must be greater than zero");
     }
-    let mut cards: Vec<_> = cards
-        .into_iter()
-        .filter(|card| scope.includes(card.kind))
-        .collect();
+    let mut cards = cards;
     if count > cards.len() {
+        let available = cards.len();
         bail!(
-            "requested {count} random cards, but only {} {} cards have center images",
-            cards.len(),
-            scope.name()
+            "requested {count} random cards, but only {available} cards in {scope} have center images"
         );
     }
 
@@ -81,20 +77,6 @@ mod tests {
     }
 
     #[test]
-    fn selects_only_cards_in_requested_scope() {
-        let selected = select_with_rng(
-            cards(),
-            1,
-            CardScope::Rd,
-            &mut StdRng::seed_from_u64(7),
-        )
-        .unwrap();
-
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].kind, CardKind::Rd);
-    }
-
-    #[test]
     fn rejects_zero_and_counts_exceeding_requested_scope() {
         assert!(
             select_with_rng(
@@ -105,9 +87,13 @@ mod tests {
             )
             .is_err()
         );
+        let rd_cards = vec![CardId {
+            value: 100_000_001,
+            kind: CardKind::Rd,
+        }];
         assert!(
             select_with_rng(
-                cards(),
+                rd_cards,
                 2,
                 CardScope::Rd,
                 &mut StdRng::seed_from_u64(7),

@@ -7,7 +7,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum CardKind {
     Ot,
     Rd,
@@ -22,10 +22,11 @@ impl CardKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum CardScope {
     Ot,
     Rd,
+    #[default]
     Both,
 }
 
@@ -38,17 +39,19 @@ impl CardScope {
                 | (Self::Both, _)
         )
     }
+}
 
-    pub fn name(self) -> &'static str {
-        match self {
+impl fmt::Display for CardScope {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
             Self::Ot => "OT",
             Self::Rd => "RD",
             Self::Both => "OT and RD",
-        }
+        })
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct CardId {
     pub value: u64,
     pub kind: CardKind,
@@ -107,6 +110,15 @@ impl IdBatch {
 
     pub fn invalid_count(&self) -> usize {
         self.issues.len() - self.duplicate_count()
+    }
+}
+
+impl From<Vec<CardId>> for IdBatch {
+    fn from(cards: Vec<CardId>) -> Self {
+        Self {
+            cards,
+            issues: Vec::new(),
+        }
     }
 }
 
@@ -200,6 +212,7 @@ mod tests {
 
     #[test]
     fn card_scope_includes_requested_kinds() {
+        assert_eq!(CardScope::default(), CardScope::Both);
         assert!(CardScope::Ot.includes(CardKind::Ot));
         assert!(!CardScope::Ot.includes(CardKind::Rd));
         assert!(!CardScope::Rd.includes(CardKind::Ot));

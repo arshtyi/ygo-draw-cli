@@ -9,7 +9,7 @@ use reqwest::blocking::Client;
 use serde::Deserialize;
 
 use crate::download;
-use crate::ids::{CardId, CardKind};
+use crate::ids::{CardId, CardKind, CardScope};
 use crate::progress;
 
 const ARTWORK_URL: &str = "https://images.ygoprodeck.com/images/cards_cropped";
@@ -47,8 +47,9 @@ impl Catalogs {
         })
     }
 
-    fn available_cards(&self) -> Vec<CardId> {
-        self.ot
+    fn available_cards(&self, scope: CardScope) -> Vec<CardId> {
+        let mut cards: Vec<_> = self
+            .ot
             .iter()
             .filter(|(_, image_id)| **image_id != 0)
             .map(|(&value, _)| CardId {
@@ -64,7 +65,10 @@ impl Catalogs {
                         kind: CardKind::Rd,
                     }),
             )
-            .collect()
+            .filter(|card| scope.includes(card.kind))
+            .collect();
+        cards.sort_unstable();
+        cards
     }
 
     fn image_id(&self, card: CardId) -> Result<u64, &'static str> {
@@ -80,10 +84,10 @@ impl Catalogs {
     }
 }
 
-pub fn available_cards(resource_dir: &Path) -> Result<Vec<CardId>> {
+pub fn available_cards(resource_dir: &Path, scope: CardScope) -> Result<Vec<CardId>> {
     let project_dir = resource_dir.join("typst-ygo");
     Catalogs::load(&project_dir)
-        .map(|catalogs| catalogs.available_cards())
+        .map(|catalogs| catalogs.available_cards(scope))
         .with_context(|| {
             format!(
                 "failed to load card data from {}; run with --refresh first",
@@ -249,16 +253,21 @@ mod tests {
     }
 
     #[test]
-    fn available_cards_exclude_zero_image_ids() {
+    fn available_cards_are_scoped_and_sorted_without_zero_images() {
         let catalogs = Catalogs {
             ot: HashMap::from([(1, 11), (2, 0)]),
             rd: HashMap::from([(100_000_001, 22)]),
         };
-        let cards = catalogs.available_cards();
+        let cards = catalogs.available_cards(CardScope::Both);
 
-        assert_eq!(cards.len(), 2);
-        assert!(cards.contains(&card(1, CardKind::Ot)));
-        assert!(cards.contains(&card(100_000_001, CardKind::Rd)));
+        assert_eq!(
+            cards,
+            vec![card(1, CardKind::Ot), card(100_000_001, CardKind::Rd)]
+        );
+        assert_eq!(
+            catalogs.available_cards(CardScope::Ot),
+            vec![card(1, CardKind::Ot)]
+        );
     }
 
     #[test]

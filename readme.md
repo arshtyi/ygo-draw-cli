@@ -2,7 +2,7 @@
 
 基于 [typst-ygo](https://github.com/arshtyi/typst-ygo) 的游戏王卡图命令行渲染工具。
 
-## Examples
+## 预览
 
 <table>
     <tbody>
@@ -39,17 +39,16 @@
     </tbody>
 </table>
 
-## Features
+## 功能
 
-- 从文件批量读取 ID、随机选择指定数量，或生成全部 OT/RD 卡图
-- 自动下载 typst-ygo、卡片数据和素材资源
-- 跳过并打印无效 ID、重复 ID、中心图下载失败和渲染失败
-- 输出运行总结，支持一条命令清理资源与渲染结果
-- 支持本地构建、Docker 和 GHCR 镜像
+- 从文件、随机结果或完整卡片库批量生成 OT/RD 卡图
+- 自动管理 typst-ygo、卡片数据、素材和中心图
+- 跳过无效或失败项目，并输出进度和运行总结
+- 支持本地运行、Docker 和 GHCR 镜像
 
-## Usage
+## 使用
 
-```txt
+```console
 Render Yu-Gi-Oh! cards from the command line with typst-ygo
 
 Usage: ygo-draw [OPTIONS]
@@ -68,33 +67,19 @@ Options:
   -V, --version                      Print version
 ```
 
-- 创建 `cards.txt`，每行填写一个十进制卡片 ID。
-- 不超过 8 位的 ID 按 OT 处理，超过 8 位的 ID 按 RD 处理。
-- 生成的图片默认写入 `output/<id>.png`。
-- 使用 `--random-scope ot`、`--random-scope rd` 或 `--random-scope both` 限定随机范围；省略时默认从 OT 和 RD 中随机。
-- 使用 `--all ot`、`--all rd` 或 `--all both` 生成对应范围内全部具备中心图的卡片；该选项不能与 `--random` 同时使用。
-- 首次使用必须先刷新资源；以后仅在需要更新资源时使用 `--refresh` 或 `--refresh-only`。
-
 ## Docker
 
-本地构建：
+本地构建或拉取 GHCR 镜像：
 
 ```bash
 docker build -t ygo-draw .
-```
-
-也可以使用 GitHub Container Registry 中的默认分支镜像：
-
-```bash
 docker pull ghcr.io/arshtyi/ygo-draw-cli:latest
 ```
 
 将当前目录挂载到容器的 `/data`，并使用当前用户运行，以便生成的文件可由宿主机读写：
 
 ```bash
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" \
-  ghcr.io/arshtyi/ygo-draw-cli:latest --refresh-only
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" ghcr.io/arshtyi/ygo-draw-cli:latest --refresh-only
 
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" \
-  ghcr.io/arshtyi/ygo-draw-cli:latest
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" ghcr.io/arshtyi/ygo-draw-cli:latest
 ```

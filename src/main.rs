@@ -72,6 +72,29 @@ fn parse_positive_count(value: &str) -> Result<usize, String> {
     Ok(count)
 }
 
+fn select_cards(cli: &Cli) -> Result<(ids::IdBatch, summary::Selection)> {
+    if let Some(count) = cli.random {
+        let scope = cli.random_scope.unwrap_or_default();
+        let cards = random::select(count, scope, &cli.resource_dir)?;
+        return Ok((
+            cards.into(),
+            summary::Selection::Random {
+                requested: count,
+                scope,
+            },
+        ));
+    }
+
+    if let Some(scope) = cli.all {
+        let cards = artworks::available_cards(&cli.resource_dir, scope)?;
+        return Ok((cards.into(), summary::Selection::All { scope }));
+    }
+
+    let batch = ids::read_file(&cli.input)?;
+    let lines = batch.cards.len() + batch.issues.len();
+    Ok((batch, summary::Selection::File { lines }))
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -87,37 +110,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let (batch, selection) = match (cli.random, cli.all) {
-        (Some(count), None) => {
-            let scope = cli.random_scope.unwrap_or(ids::CardScope::Both);
-            (
-                ids::IdBatch {
-                    cards: random::select(count, scope, &cli.resource_dir)?,
-                    issues: Vec::new(),
-                },
-                summary::Selection::Random {
-                    requested: count,
-                    scope,
-                },
-            )
-        }
-        (None, Some(scope)) => (
-            ids::IdBatch {
-                cards: artworks::available_cards(&cli.resource_dir)?
-                    .into_iter()
-                    .filter(|card| scope.includes(card.kind))
-                    .collect(),
-                issues: Vec::new(),
-            },
-            summary::Selection::All { scope },
-        ),
-        (None, None) => {
-            let batch = ids::read_file(&cli.input)?;
-            let lines = batch.cards.len() + batch.issues.len();
-            (batch, summary::Selection::File { lines })
-        }
-        (Some(_), Some(_)) => unreachable!("clap rejects conflicting selection modes"),
-    };
+    let (batch, selection) = select_cards(&cli)?;
     ids::print_issues(&batch.issues)?;
     let (ot_count, rd_count) = batch.kind_counts();
     let invalid_count = batch.invalid_count();

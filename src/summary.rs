@@ -50,11 +50,11 @@ impl fmt::Display for RunSummary {
                 writeln!(
                     formatter,
                     "  Selection: random ({requested} requested, {})",
-                    scope.name()
+                    scope
                 )?;
             }
             Selection::All { scope } => {
-                writeln!(formatter, "  Selection: all ({})", scope.name())?;
+                writeln!(formatter, "  Selection: all ({scope})")?;
             }
         }
         writeln!(
